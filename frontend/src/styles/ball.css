@@ -1,0 +1,30 @@
+.ball {
+  border-radius: 50%;
+  transition: all 0.3s ease;
+  position: relative;
+}
+
+/* Glow effect */
+.glow {
+  box-shadow:
+    0 0 10px rgba(255,255,255,0.4),
+    0 0 20px currentColor,
+    0 0 40px currentColor;
+}
+
+/* Smooth floating animation */
+.ball::after {
+  content: "";
+  position: absolute;
+  top: 5px;
+  left: 8px;
+  width: 30%;
+  height: 30%;
+  background: rgba(255,255,255,0.4);
+  border-radius: 50%;
+}
+
+/* Hover effect */
+.ball:hover {
+  transform: scale(1.1);
+}
