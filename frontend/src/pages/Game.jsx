@@ -32,6 +32,12 @@ export default function Game() {
   const [movingPath, setMovingPath] = useState([]);
   const [isMoving, setIsMoving] = useState(false);
 
+  // Power-up States
+  const [shieldActive, setShieldActive] = useState(false);
+  const [hintPath, setHintPath] = useState([]);
+
+  const isToddler = user?.gameMode === "Toddler";
+
   useEffect(() => {
     fetchLevel();
     window.addEventListener("openSpinner", handleOpenSpinner);
@@ -41,13 +47,15 @@ export default function Game() {
   }, []);
 
   useEffect(() => {
+    if (isToddler) return; // Toddler mode has no timer pressure!
+    
     if (timeLeft > 0 && !completed && !failed) {
       const timer = setTimeout(() => setTimeLeft(timeLeft - 1), 1000);
       return () => clearTimeout(timer);
     } else if (timeLeft === 0 && !completed && !failed && level) {
       handleFail();
     }
-  }, [timeLeft, completed, failed, level]);
+  }, [timeLeft, completed, failed, level, isToddler]);
 
   useEffect(() => {
     if (movingPath.length > 0 && !completed && !failed) {
@@ -100,6 +108,8 @@ export default function Game() {
       setTimeLeft(data.timeLimit || 30);
       setReward(null);
       setStarCollected(false);
+      setShieldActive(false);
+      setHintPath([]);
 
       const emptyCells = [];
       data.grid.forEach((row, y) => {
@@ -135,7 +145,7 @@ export default function Game() {
       const current = path[path.length - 1];
 
       if (current.x === end.x && current.y === end.y) {
-        return path.slice(1); // Return path excluding the start position
+        return path.slice(1);
       }
 
       const neighbors = [
@@ -149,8 +159,8 @@ export default function Game() {
         if (
           neighbor.y >= 0 && neighbor.y < grid.length &&
           neighbor.x >= 0 && neighbor.x < grid[0].length &&
-          grid[neighbor.y][neighbor.x] !== 1 && // not a wall
-          grid[neighbor.y][neighbor.x] !== 3 && // not a bomb
+          grid[neighbor.y][neighbor.x] !== 1 && 
+          grid[neighbor.y][neighbor.x] !== 3 && 
           !visited.has(`${neighbor.x}-${neighbor.y}`)
         ) {
           visited.add(`${neighbor.x}-${neighbor.y}`);
@@ -173,14 +183,14 @@ export default function Game() {
  
     // Bomb check
     if (grid[y][x] === 3) {
-      if (isClick) handleFail();
+      if (isClick) handleBombCollision(x, y);
       return;
     }
 
     // Auto-move selection logic - Only for Clicks
     if (isClick && selectedPos) {
       if (selectedPos.x === x && selectedPos.y === y) {
-        setSelectedPos(null); // Deselect if clicking the same point
+        setSelectedPos(null);
         return;
       }
 
@@ -250,82 +260,255 @@ export default function Game() {
     failAudio.play().catch(e => console.log("Audio play blocked"));
   };
 
+  // Game Mode Selection handler
+  const changeGameMode = async (mode) => {
+    try {
+      const { data } = await API.post("/game/mode", { mode });
+      setUser(data.user);
+      toast.success(`Game Mode set to: ${mode}! 🥳`, { autoClose: 1500 });
+      // Reset timer if switching to Toddler Mode mid-game
+      if (mode === "Toddler") {
+        setTimeLeft(level?.timeLimit || 30);
+      }
+    } catch (err) {
+      toast.error("Failed to set game mode");
+    }
+  };
+
+  // Power-up Triggers
+  const useShield = async () => {
+    if (!user?.powerups?.shield || user.powerups.shield <= 0 || shieldActive || completed || failed) return;
+    try {
+      const { data } = await API.post("/game/powerup/use/shield");
+      setUser(data.user);
+      setShieldActive(true);
+      toast.success("Candy Shield activated! 🛡️✨", { autoClose: 1500 });
+    } catch (err) {
+      toast.error("Failed to use Candy Shield");
+    }
+  };
+
+  const useTimeFreeze = async () => {
+    if (!user?.powerups?.timeFreeze || user.powerups.timeFreeze <= 0 || completed || failed) return;
+    try {
+      const { data } = await API.post("/game/powerup/use/timeFreeze");
+      setUser(data.user);
+      setTimeLeft(prev => prev + 15);
+      toast.success("Sugar Rush! +15 seconds! ⚡🍬", { autoClose: 1500 });
+    } catch (err) {
+      toast.error("Failed to use Sugar Rush");
+    }
+  };
+
+  const useHint = async () => {
+    if (!user?.powerups?.hint || user.powerups.hint <= 0 || isMoving || completed || failed) return;
+    try {
+      const { data } = await API.post("/game/powerup/use/hint");
+      setUser(data.user);
+      const target = (starPos && !starCollected) ? starPos : level.endPos;
+      const path = findPath(pos, target);
+      if (path) {
+        setHintPath(path);
+        toast.success("Magic Wand revealed the path! 🪄✨", { autoClose: 2000 });
+        setTimeout(() => {
+          setHintPath([]);
+        }, 4000);
+      } else {
+        toast.info("No path found! 🌟");
+      }
+    } catch (err) {
+      toast.error("Failed to use Magic Wand");
+    }
+  };
+
+  const handleBombCollision = (bx, by) => {
+    if (completed || failed) return;
+
+    if (shieldActive) {
+      setShieldActive(false);
+      // Consume shield in backend
+      API.post("/game/powerup/use/shield")
+        .then((res) => setUser(res.data.user))
+        .catch(e => console.log("Failed to consume shield"));
+      
+      // Clear the bomb from the grid
+      if (bx !== undefined && by !== undefined) {
+        const newGrid = grid.map(row => [...row]);
+        newGrid[by][bx] = 0;
+        setGrid(newGrid);
+      }
+      toast.success("Candy Shield absorbed the pop! 🛡️🎈", { autoClose: 2000 });
+      return;
+    }
+
+    if (user?.gameMode === "Toddler") {
+      if (bx !== undefined && by !== undefined) {
+        const newGrid = grid.map(row => [...row]);
+        newGrid[by][bx] = 0;
+        setGrid(newGrid);
+      }
+      toast.info("Pop! Balloon popped safely! 🎈✨", { autoClose: 1500 });
+      return;
+    }
+
+    if (user?.gameMode === "Junior") {
+      toast.warning("Ouch! Reset to start! 🌀", { autoClose: 2000 });
+      setPos(level.startPos);
+      return;
+    }
+
+    handleFail();
+  };
+
   if (!level) return <div className="loading">Loading Level...</div>;
 
   return (
     <div className="game-page">
       <Navbar />
 
-        <div 
-          className="game-container" 
-          style={{ borderColor: level.boundaryColor, boxShadow: `0 0 20px ${level.boundaryColor}44` }}
-        >
-          <div className="game-header">
-            <div className="header-top">
-              <h2 style={{ color: level.boundaryColor }}>Level {level.levelNumber}</h2>
-              <div className="timer-container">
-                <span className="timer-icon">⏱️</span>
-                <span className={`timer-text ${timeLeft < 10 ? "timer-danger" : ""}`}>{timeLeft}s</span>
-              </div>
-            </div>
+      <div 
+        className="game-container" 
+        style={{ borderColor: level.boundaryColor, boxShadow: `0 10px 30px ${level.boundaryColor}22` }}
+      >
+        <div className="game-header">
+          <div className="header-top">
+            <h2 style={{ color: level.boundaryColor }}>Level {level.levelNumber}</h2>
             
-            <div className="header-bottom">
-              <div 
-                className="difficulty-badge" 
-                style={{ backgroundColor: `${level.boundaryColor}33`, color: level.boundaryColor, border: `1px solid ${level.boundaryColor}` }}
+            {/* Game Mode Toggle */}
+            <div className="mode-selection-bar">
+              <button 
+                className={`mode-btn ${user?.gameMode === "Toddler" ? "active" : ""}`} 
+                onClick={() => changeGameMode("Toddler")}
               >
-                {level.difficulty}
-              </div>
-              {completed && <div className="win-msg">Success! +{reward} Coins</div>}
-              {failed && <div className="fail-msg">Level Failed!</div>}
+                Toddler 🧸
+              </button>
+              <button 
+                className={`mode-btn ${user?.gameMode === "Junior" ? "active" : ""}`} 
+                onClick={() => changeGameMode("Junior")}
+              >
+                Junior 🌟
+              </button>
+              <button 
+                className={`mode-btn ${user?.gameMode === "SuperKid" ? "active" : ""}`} 
+                onClick={() => changeGameMode("SuperKid")}
+              >
+                Super Kid 🏆
+              </button>
             </div>
           </div>
+          
+          <div className="header-bottom">
+            <div 
+              className="difficulty-badge" 
+              style={{ backgroundColor: `${level.boundaryColor}22`, color: level.boundaryColor, border: `2px solid ${level.boundaryColor}` }}
+            >
+              {level.difficulty}
+            </div>
 
-          <div className="board-wrapper">
-            <MazeBoard
-              grid={grid}
-              pos={pos}
-              onMove={handleMove}
-              ballColor={user?.selectedBall?.color || "#6366f1"}
-              ballGlow={user?.selectedBall?.glow}
-              ballBorder={user?.selectedBall?.border}
-              ballPattern={user?.selectedBall?.pattern}
-              ballSecondaryColor={user?.selectedBall?.secondaryColor}
-              starPos={starPos}
-              starCollected={starCollected}
-              bombs={level.bombs}
-              onBombClick={handleFail}
-              selectedPos={selectedPos}
-            />
+            {completed && <div className="win-msg">Success! +{reward} Coins</div>}
+            {failed && <div className="fail-msg">Level Failed!</div>}
 
-            <AnimatePresence>
-              {completed && (
-                <motion.div 
-                  initial={{ scale: 0, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  className="status-overlay win-overlay"
-                >
-                  <div className="emoji-anim">🥳🎉🏆</div>
-                  <h2>Level Complete!</h2>
-                  <p>You earned {reward} coins</p>
-                  <button className="next-btn" onClick={fetchLevel}>Next Level</button>
-                </motion.div>
-              )}
-
-              {failed && (
-                <motion.div 
-                  initial={{ scale: 0, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  className="status-overlay fail-overlay"
-                >
-                  <div className="emoji-anim">💥😵💀</div>
-                  <h2>Game Over!</h2>
-                  <p>Time's up or you hit a bomb!</p>
-                  <button className="retry-btn" onClick={fetchLevel}>Restart Level</button>
-                </motion.div>
-              )}
-            </AnimatePresence>
+            {/* Render Timer (Hidden or Fixed for Toddler Mode) */}
+            <div className="timer-container">
+              <span className="timer-icon">⏱️</span>
+              <span className={`timer-text ${(timeLeft < 10 && !isToddler) ? "timer-danger" : ""}`}>
+                {isToddler ? "∞" : `${timeLeft}s`}
+              </span>
+            </div>
           </div>
+        </div>
+
+        <div className="board-wrapper">
+          <MazeBoard
+            grid={grid}
+            pos={pos}
+            onMove={handleMove}
+            ballColor={user?.selectedBall?.color || "#6366f1"}
+            ballGlow={user?.selectedBall?.glow}
+            ballBorder={user?.selectedBall?.border}
+            ballPattern={user?.selectedBall?.pattern}
+            ballSecondaryColor={user?.selectedBall?.secondaryColor}
+            starPos={starPos}
+            starCollected={starCollected}
+            bombs={level.bombs}
+            onBombClick={handleBombCollision}
+            selectedPos={selectedPos}
+            hintPath={hintPath}
+            shieldActive={shieldActive}
+          />
+
+          <AnimatePresence>
+            {completed && (
+              <motion.div 
+                initial={{ scale: 0, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                className="status-overlay win-overlay"
+              >
+                <div className="emoji-anim">🥳🎉🏆</div>
+                <h2>Level Complete!</h2>
+                <p>You earned {reward} coins</p>
+                <button className="next-btn" onClick={fetchLevel}>Next Level</button>
+              </motion.div>
+            )}
+
+            {failed && (
+              <motion.div 
+                initial={{ scale: 0, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                className="status-overlay fail-overlay"
+              >
+                <div className="emoji-anim">💥😵💀</div>
+                <h2>Game Over!</h2>
+                <p>Time's up or you hit a bomb!</p>
+                <button className="retry-btn" onClick={fetchLevel}>Restart Level</button>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+
+        {/* Powerups inventory panel */}
+        <div className="powerups-panel">
+          <button 
+            className="powerup-button" 
+            onClick={useShield} 
+            disabled={!user?.powerups?.shield || user.powerups.shield <= 0 || shieldActive || completed || failed}
+            title="Dodge one bomb explosion!"
+          >
+            <span className="powerup-icon">🛡️</span>
+            <span className="powerup-name">Shield</span>
+            <span className="powerup-count">{user?.powerups?.shield || 0}</span>
+          </button>
+          
+          <button 
+            className="powerup-button" 
+            onClick={useTimeFreeze} 
+            disabled={!user?.powerups?.timeFreeze || user.powerups.timeFreeze <= 0 || isToddler || completed || failed}
+            title="Add +15 seconds to timer!"
+          >
+            <span className="powerup-icon">⚡</span>
+            <span className="powerup-name">Sugar Rush</span>
+            <span className="powerup-count">{user?.powerups?.timeFreeze || 0}</span>
+          </button>
+          
+          <button 
+            className="powerup-button" 
+            onClick={useHint} 
+            disabled={!user?.powerups?.hint || user.powerups.hint <= 0 || isMoving || completed || failed}
+            title="Reveal path to star or exit!"
+          >
+            <span className="powerup-icon">🪄</span>
+            <span className="powerup-name">Magic Wand</span>
+            <span className="powerup-count">{user?.powerups?.hint || 0}</span>
+          </button>
+        </div>
+
+        {/* Google AdSense Placement Placeholder */}
+        <div className="adsense-game-bottom">
+          <span className="adsense-label">Sponsor Zone 🌟</span>
+          <div className="adsense-game-bottom-mock">
+            <span>🧸 Fun Toys: Bubble Blasters & Lego Blocks 50% Off! 🎈</span>
+          </div>
+        </div>
 
         {showSpinner && (
           <Spinner 
@@ -342,4 +525,4 @@ export default function Game() {
       </div>
     </div>
   );
-}
+}

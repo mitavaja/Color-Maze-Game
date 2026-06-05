@@ -1,30 +1,28 @@
 .ball {
   border-radius: 50%;
-  transition: all 0.3s ease;
+  transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
   position: relative;
+  filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.15));
 }
 
-/* Glow effect */
+.ball-gloss {
+  position: absolute;
+  top: 10%;
+  left: 15%;
+  width: 30%;
+  height: 30%;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.7) 0%, rgba(255, 255, 255, 0) 80%);
+  border-radius: 50%;
+  pointer-events: none;
+}
+
 .glow {
   box-shadow:
     0 0 10px rgba(255,255,255,0.4),
     0 0 20px currentColor,
-    0 0 40px currentColor;
+    0 0 40px rgba(255, 255, 255, 0.2);
 }
 
-/* Smooth floating animation */
-.ball::after {
-  content: "";
-  position: absolute;
-  top: 5px;
-  left: 8px;
-  width: 30%;
-  height: 30%;
-  background: rgba(255,255,255,0.4);
-  border-radius: 50%;
-}
-
-/* Hover effect */
 .ball:hover {
-  transform: scale(1.1);
+  transform: scale(1.18) rotate(15deg);
 }

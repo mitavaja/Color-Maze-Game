@@ -35,11 +35,19 @@ export default function Dashboard() {
 
         <div className="action-buttons">
           <button className="play-btn" onClick={() => navigate("/game")}>
-            Play Now
+            Play Now 🎮
           </button>
-          <button className="shop-btn glass" onClick={() => navigate("/shop")}>
-            Visit Shop
+          <button className="shop-btn" onClick={() => navigate("/shop")}>
+            Visit Shop 🧸
           </button>
+        </div>
+
+        {/* Google AdSense Placement */}
+        <div className="adsense-container">
+          <span className="adsense-label">Sponsor Zone 🌟</span>
+          <div className="adsense-mock-banner">
+            <span>🍭 Magic Candies: Sweet Jelly Beans & Rainbow Drops! 🌈</span>
+          </div>
         </div>
       </main>
     </div>

@@ -13,6 +13,10 @@ export const completeLevel = async (req, res) => {
 
   const user = await User.findById(req.user.id);
 
+  if (user.gameMode === "Toddler") {
+    coins = coins * 2;
+  }
+
   user.coins += coins;
   user.coinHistory.push({
     level: user.currentLevel,
@@ -20,8 +24,9 @@ export const completeLevel = async (req, res) => {
   });
   
   if (starCollected) {
-    user.stars += 1;
-    user.starsForSpinner += 1;
+    const starReward = user.gameMode === "Toddler" ? 2 : 1;
+    user.stars += starReward;
+    user.starsForSpinner += starReward;
   }
 
   user.currentLevel += 1;
@@ -158,4 +163,56 @@ export const spinWheel = async (req, res) => {
   await user.save();
   await user.populate("ownedBalls selectedBall");
   res.json({ user, reward, rewardIndex });
+};
+
+export const buyPowerup = async (req, res) => {
+  const { type } = req.params;
+  const prices = { shield: 150, timeFreeze: 100, hint: 200 };
+  const price = prices[type];
+
+  if (!price) return res.status(400).json({ msg: "Invalid powerup type" });
+
+  const user = await User.findById(req.user.id);
+  if (user.coins < price) {
+    return res.status(400).json({ msg: "Not enough coins!" });
+  }
+
+  user.coins -= price;
+  user.powerups = user.powerups || { shield: 0, timeFreeze: 0, hint: 0 };
+  user.powerups[type] = (user.powerups[type] || 0) + 1;
+
+  await user.save();
+  await user.populate("ownedBalls selectedBall");
+
+  res.json({ user, msg: `${type} purchased successfully!` });
+};
+
+export const usePowerup = async (req, res) => {
+  const { type } = req.params;
+  const user = await User.findById(req.user.id);
+  
+  user.powerups = user.powerups || { shield: 0, timeFreeze: 0, hint: 0 };
+  if (!user.powerups[type] || user.powerups[type] <= 0) {
+    return res.status(400).json({ msg: `No ${type} powerup available!` });
+  }
+
+  user.powerups[type] -= 1;
+  await user.save();
+  await user.populate("ownedBalls selectedBall");
+
+  res.json({ user, msg: `Used ${type}!` });
+};
+
+export const setGameMode = async (req, res) => {
+  const { mode } = req.body;
+  if (!["Toddler", "Junior", "SuperKid"].includes(mode)) {
+    return res.status(400).json({ msg: "Invalid game mode" });
+  }
+
+  const user = await User.findById(req.user.id);
+  user.gameMode = mode;
+  await user.save();
+  await user.populate("ownedBalls selectedBall");
+
+  res.json({ user, msg: `Game mode set to ${mode}` });
 };

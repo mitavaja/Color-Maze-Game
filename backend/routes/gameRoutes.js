@@ -6,7 +6,10 @@ import {
   selectBall,
   getLevel,
   collectStar,
-  spinWheel
+  spinWheel,
+  buyPowerup,
+  usePowerup,
+  setGameMode
 } from "../controllers/gameController.js";
 import authMiddleware from "../middleware/authMiddleware.js";
 
@@ -19,5 +22,8 @@ router.post("/spin-wheel", authMiddleware, spinWheel);
 router.get("/shop", authMiddleware, getShop);
 router.post("/buy/:ballId", authMiddleware, buyBall);
 router.post("/select/:ballId", authMiddleware, selectBall);
+router.post("/powerup/buy/:type", authMiddleware, buyPowerup);
+router.post("/powerup/use/:type", authMiddleware, usePowerup);
+router.post("/mode", authMiddleware, setGameMode);
 
 export default router;

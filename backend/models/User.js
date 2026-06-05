@@ -9,6 +9,12 @@ const userSchema = new mongoose.Schema({
   currentLevel: { type: Number, default: 1 },
   ownedBalls: [{ type: mongoose.Schema.Types.ObjectId, ref: "Ball" }],
   selectedBall: { type: mongoose.Schema.Types.ObjectId, ref: "Ball" },
+  powerups: {
+    shield: { type: Number, default: 0 },
+    timeFreeze: { type: Number, default: 0 },
+    hint: { type: Number, default: 0 }
+  },
+  gameMode: { type: String, enum: ["Toddler", "Junior", "SuperKid"], default: "Junior" },
   coinHistory: [{
     level: Number,
     coinsEarned: Number,
